@@ -1,89 +1,102 @@
 import re
-from datetime import datetime
-import parsedatetime
+import datetime
+from typing import Optional
 from fastapi import FastAPI, Form, UploadFile, File
+from rapidfuzz import process, fuzz
+import parsedatetime
 import pytesseract
 from PIL import Image
 import io
 
-app = FastAPI()
-# Initialize the Calendar parser
+app = FastAPI(title="AI Appointment Scheduler")
+
+# Setup for Date Parsing
 cal = parsedatetime.Calendar()
 
-@app.post("/parse-appointment")
-async def parse_appointment(text_input: str = Form(None), file: UploadFile = File(None)):
-    # 1. OCR / Text Input
-    raw_text = ""
-    if file:
-        image = Image.open(io.BytesIO(await file.read()))
-        raw_text = pytesseract.image_to_string(image).strip()
+# 1. FUZZY MATCHING SETTINGS
+# Words we want to "fix" if the user typos them
+TARGET_KEYWORDS = [
+    "next", "tomorrow", "today", "monday", "tuesday", "wednesday", 
+    "thursday", "friday", "saturday", "sunday", "appointment", "at"
+]
+
+def fuzzy_clean_text(text: str) -> str:
+    """Corrects typos like 'nxt' to 'next' and '@' to 'at'."""
+    # Basic pre-cleaning
+    text = text.lower().replace("@", " at ")
+    words = text.split()
+    fixed_words = []
+
+    for word in words:
+        # We only want to fuzzy match words that aren't already perfect
+        if word in TARGET_KEYWORDS or len(word) < 3:
+            fixed_words.append(word)
+            continue
+        
+        # Check for a 'close enough' match (score > 80)
+        match = process.extractOne(word, TARGET_KEYWORDS, scorer=fuzz.WRatio)
+        if match and match[1] > 80:
+            fixed_words.append(match[0])
+        else:
+            fixed_words.append(word)
+            
+    return " ".join(fixed_words)
+
+# 2. EXTRACTION LOGIC
+def extract_appointment_details(text: str):
+    # Clean the text first!
+    cleaned_text = fuzzy_clean_text(text)
+    
+    # Extract time using Regex (e.g., 3pm, 10:30am)
+    time_match = re.search(r'(\d{1,2}(?::\d{2})?\s*(?:am|pm))', cleaned_text)
+    time_str = time_match.group(1) if time_match else "Not found"
+
+    # Extract date using parsedatetime
+    # It uses the 'now' time as a reference to calculate "next Friday"
+    now = datetime.datetime.now()
+    time_struct, parse_status = cal.parse(cleaned_text, now)
+    
+    # parse_status 1 = date, 2 = time, 3 = datetime
+    if parse_status > 0:
+        parsed_dt = datetime.datetime(*time_struct[:6])
+        date_str = parsed_dt.strftime("%Y-%m-%d")
     else:
-        raw_text = text_input if text_input else ""
+        date_str = "Could not determine date"
 
-    if not raw_text:
-        return {"status": "error", "message": "No input"}
+    # Simple Keyword extraction for Department
+    departments = ["dentist", "doctor", "cardiology", "physio", "pediatric"]
+    dept_match = next((d for d in departments if d in cleaned_text), "General")
 
-    # 2. Extract Department
-    dept = None
-    for word in ["dentist", "doctor", "physician", "cardiology", "clinic"]:
-        if word in raw_text.lower():
-            dept = word
-            break
-
-    # 3. Extract Time using Regex
-    time_match = re.search(r'(\d{1,2}(?::\d{2})?\s?(?:am|pm|AM|PM))', raw_text)
-    time_str = time_match.group(1) if time_match else "9:00 AM" # Default time if missing
-
-    # 4. Extract Date Phrase (next friday, tomorrow, etc.)
-    # We strip out the department and "book" to leave the date words
-    date_phrase = raw_text.lower().replace("book", "").replace("appointment", "")
-    if dept:
-        date_phrase = date_phrase.replace(dept, "")
-    date_phrase = date_phrase.replace(time_str, "").replace("at", "").strip()
-
-    # 5. The "Magic" Parsing Step
-    # parsedatetime returns (datetime_struct, status)
-    # 1=date, 2=time, 3=datetime
-    time_struct, parse_status = cal.parse(date_phrase)
-    dt = datetime(*time_struct[:6])
-
-    # 6. Parse Time specifically
-    time_struct_final, _ = cal.parse(time_str)
-    dt_time = datetime(*time_struct_final[:6])
-
-    # 7. Guardrails
-    if not dept:
-        return {"status": "needs_clarification", "message": "Department missing"}
-    if parse_status == 0:
-        return {"status": "needs_clarification", "message": f"Could not understand date: {date_phrase}"}
-
-    # 8. Success Output
     return {
-        "step_1_ocr": {
-            "raw_text": raw_text,
-            "confidence": 0.90 # Mock confidence for Tesseract
-        },
-        "step_2_extraction": {
-            "entities": {
-                "date_phrase": date_phrase,
-                "time_phrase": time_str,
-                "department": dept
-            },
-            "entities_confidence": 0.85
-        },
-        "step_3_normalization": {
-            "normalized": {
-                "date": dt.strftime("%Y-%m-%d"),
-                "time": dt_time.strftime("%H:%M"),
-                "tz": "Asia/Kolkata"
-            },
-            "normalization_confidence": 0.90
-        },
-        "appointment": {
-            "department": dept.capitalize() if dept else "Unknown",
-            "date": dt.strftime("%Y-%m-%d"),
-            "time": dt_time.strftime("%H:%M"),
-            "tz": "Asia/Kolkata"
-        },
-        "status": "ok"
+        "original_text": text,
+        "cleaned_text": cleaned_text,
+        "extracted_date": date_str,
+        "extracted_time": time_str,
+        "department": dept_match.capitalize()
     }
+
+# 3. API ENDPOINTS
+@app.post("/parse-appointment")
+async def parse_appointment(
+    text_input: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None)
+):
+    final_text = ""
+
+    # If an image is uploaded, use OCR
+    if file:
+        image_data = await file.read()
+        image = Image.open(io.BytesIO(image_data))
+        final_text = pytesseract.image_to_string(image)
+    elif text_input:
+        final_text = text_input
+    else:
+        return {"error": "No text or image provided"}
+
+    # Process the text
+    result = extract_appointment_details(final_text)
+    return {"status": "success", "data": result}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
