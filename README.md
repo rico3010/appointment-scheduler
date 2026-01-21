@@ -1,8 +1,8 @@
-# 📅 AI-Powered Appointment Scheduler
+#   AI-Powered Appointment Scheduler
 
 A robust backend service built with **FastAPI** that transforms natural language text and images into structured appointment data. This project is optimized for real-world usage with built-in typo correction and OCR capabilities.
 
-## 🚀 Key Features
+##   Key Features
 - **Smart Typo Correction:** Uses Fuzzy Matching (`RapidFuzz`) to understand abbreviations like "nxt" for "next" or "tmrw" for "tomorrow."
 - **OCR Integration:** Extracts appointment details directly from images using Tesseract OCR.
 - **Natural Language Parsing:** Converts relative dates (e.g., "next Friday") into standard ISO format.
@@ -10,7 +10,7 @@ A robust backend service built with **FastAPI** that transforms natural language
 
 ---
 
-## 🏗️ Technical Architecture
+##   Technical Architecture
 
 The system processes data through a specialized pipeline:
 
@@ -23,7 +23,7 @@ The system processes data through a specialized pipeline:
 
 ---
 
-## 🛠️ Setup & Installation
+##   Setup & Installation
 
 ### 1. System Requirements (Linux Mint)
 Ensure Tesseract OCR is installed on your system:
@@ -51,7 +51,7 @@ Bash
 uvicorn main:app --reload
 
 Access the dashboard at: http://127.0.0.1:8000/docs
-🧪 API Usage Examples
+  API Usage Examples
 Text Input (with Typos)
 
 Endpoint: POST /parse-appointment
@@ -75,7 +75,7 @@ JSON
 Image Input
 
 Upload a .png or .jpg containing text like "Dentist tomorrow 10am" to the same endpoint using the file field.
-📦 Core Dependencies
+  Core Dependencies
 
     FastAPI: Modern web framework.
 
@@ -87,8 +87,9 @@ Upload a .png or .jpg containing text like "Dentist tomorrow 10am" to the same e
 
     Pillow: Image processing.
 
-🔗 Live Demo
+  Live Demo
 
 API URL: https://spriest-immensely-suzy.ngrok-free.dev
 
 Interactive Docs: https://spriest-immensely-suzy.ngrok-free.dev/docs
+
