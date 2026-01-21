@@ -93,3 +93,8 @@ API URL: https://spriest-immensely-suzy.ngrok-free.dev
 
 Interactive Docs: https://spriest-immensely-suzy.ngrok-free.dev/docs
 
+  CURL REQUEST
+
+curl -X 'POST'   'https://spriest-immensely-suzy.ngrok-free.dev/parse-appointment'   -H 'accept: application/json'   -H 'Content-Type: application/x-www-form-urlencoded'   -d 'text_input=Book%20dentist%20next%20Friday%20at%203pm'
+
+
